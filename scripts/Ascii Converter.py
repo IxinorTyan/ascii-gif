@@ -1,11 +1,27 @@
 import json
+import queue
+import threading
+from ascii_html import export_html, ExportCancelled
+from ascii_preview import AsciiPreview
 
 abs_path = os.getcwd()
 
 settings_path = 'scripts/config.json'
 with open(settings_path, encoding='utf-8') as f:
     current_settings = json.load(f)
+def normalize_language(lang):
+    if not lang:
+        return 'Chinese'
+    s = str(lang).strip().lower()
+    if s in ['chinese', 'zh', 'zh-cn', 'zh-hans', '中文', '汉语', '简体中文']:
+        return 'Chinese'
+    elif s in ['english', 'en', 'en-us', '英文', '英语']:
+        return 'English'
+    return str(lang).strip()
+
 globals().update(current_settings)
+language = normalize_language(current_settings.get('language', 'Chinese'))
+current_settings['language'] = language
 
 try:
     with open(f'scripts/languages/{language}.json', encoding='utf-8') as f:
@@ -38,6 +54,7 @@ class Root(Tk):
 
     def __init__(self):
         super(Root, self).__init__()
+        self.value_dict = deepcopy(current_settings)
         self.title("Ascii Converter")
         self.minsize(1000, 650)
         self.wm_iconbitmap('resources/ascii.ico')
@@ -86,6 +103,25 @@ class Root(Tk):
             command=self.change_settings_window,
             style='New.TButton')
         self.change_settings_button.place(x=0, y=440, width=500, height=60)
+        lang_text = "🌐 切换为 English" if self.value_dict.get('language') == 'Chinese' else "🌐 切换为 中文"
+        self.toggle_language_button = ttk.Button(
+            self,
+            text=lang_text,
+            compound=CENTER,
+            command=self.toggle_language,
+            style='New2.TButton')
+        self.toggle_language_button.place(x=0, y=520, width=500, height=55)
+        self.html_button = ttk.Button(self, text='视频 / GIF → ASCII 动画 HTML',
+                                      command=self.ascii_html_window, style='New2.TButton')
+        self.html_button.place(x=520, y=340, width=450, height=60)
+        self.main_widgets = [
+            self.img_to_ascii_img_button,
+            self.video_to_ascii_video_button,
+            self.video_to_ascii_img_button,
+            self.change_settings_button,
+            self.toggle_language_button,
+            self.html_button
+        ]
         self.frame_info = StringVar()
         self.frame_show = ttk.Label(self,
                                     textvariable=self.frame_info,
@@ -97,7 +133,6 @@ class Root(Tk):
         self.translate_all_config_options = [
             translate_dict[i] for i in self.all_config_options
         ]
-        self.value_dict = deepcopy(current_settings)
         self.options_num = len(self.all_config_options)
         self.config_original = self.all_config_options.copy()
         self.all_config_options.sort(key=lambda s: s.lower())
@@ -112,7 +147,14 @@ class Root(Tk):
                                            size=self.value_dict['font_size'])
         except:
             self.font = ImageFont.load_default()
-        font_x_len, font_y_len = self.font.getsize('a')
+        if hasattr(self.font, 'getbbox'):
+            bbox = self.font.getbbox('a')
+            font_x_len = max(1, bbox[2] - bbox[0])
+            font_y_len = max(1, bbox[3] - bbox[1])
+        elif hasattr(self.font, 'getsize'):
+            font_x_len, font_y_len = self.font.getsize('a')
+        else:
+            font_x_len, font_y_len = 6, 11
         self.font_x_len = font_x_len
         self.font_y_len = font_y_len
 
@@ -347,6 +389,118 @@ class Root(Tk):
         self.frame_info.set(translate_dict['No actions at this time'])
         self.frame_show.place(x=0, y=380, width=300, height=70)
         self.current_widgets.append(self.frame_show)
+
+    def ascii_html_window(self):
+        self.video_to_ascii_video_window()
+        self.start_video_to_ascii_video_button.configure(
+            text='导出 ASCII 动画 HTML', command=self.start_html_export)
+        self.start_video_frames_to_ascii_video_button.place_forget()
+        # HTML uses source timing, independent of the existing MP4 output FPS.
+        fps_entry = self.value_entry_dict['video_frame_rate']
+        for widget in self.current_widgets:
+            if widget is fps_entry or (isinstance(widget, ttk.Label)
+                    and widget.cget('text') == translate_dict['video_frame_rate']):
+                widget.place_forget()
+        note = ttk.Label(self, text='选择视频或 GIF 文件；保留原始播放节奏，无音频。\n'
+                         '帧范围留空为全部，或填写 [0, 100]（不含结束帧）。\n'
+                         '导出后可离线播放；增大缩放倍数可以减小 HTML 体积。',
+                         style='New.TLabel')
+        note.place(x=0, y=550, width=490, height=75)
+        self.current_widgets.append(note)
+        self.frame_show.place(x=0, y=380, width=950, height=85)
+        preview_button = ttk.Button(self, text='预览 / 选择一帧',
+                                    command=self.open_html_preview, style='New2.TButton')
+        preview_button.place(x=160, y=300, width=220, height=50)
+        self.current_widgets.append(preview_button)
+
+    def open_html_preview(self):
+        source = self.value_dict.get('video_path')
+        if not isinstance(source, str) or not os.path.isfile(source):
+            self.frame_info.set('请先选择视频或 GIF 文件，再打开预览。')
+            return
+        existing = getattr(self, '_ascii_preview', None)
+        if existing is not None and existing.winfo_exists():
+            if existing.source == source:
+                existing.lift()
+                existing.render()
+                return
+            existing.close()
+
+        def settings_getter():
+            if self.value_dict.get('video_path') != source:
+                raise ValueError('输入文件已改变，请在主窗口重新打开预览。')
+            self.update_font()
+            settings = deepcopy(self.value_dict)
+            settings['colored_image'] = bool(self.picture_color.get())
+            return settings, (self.font_x_len, self.font_y_len)
+
+        self._ascii_preview = AsciiPreview(self, source, settings_getter)
+
+    def start_html_export(self):
+        if getattr(self, '_html_running', False):
+            return
+        settings = deepcopy(self.value_dict)
+        settings['colored_image'] = bool(self.picture_color.get())
+        source = settings.get('video_path')
+        if not isinstance(source, str) or not os.path.isfile(source):
+            self.frame_info.set('请选择存在的视频或 GIF 文件。')
+            return
+        destination = filedialog.asksaveasfilename(
+            title='保存 ASCII 动画 HTML', defaultextension='.html',
+            initialfile='ascii_' + os.path.splitext(os.path.basename(source))[0] + '.html',
+            filetypes=(('HTML 网页', '*.html'),))
+        if not destination:
+            self.frame_info.set('已取消导出。')
+            return
+        self.update_font()
+        cell_size = (self.font_x_len, self.font_y_len)
+        self._html_running = True
+        self._html_cancel = threading.Event()
+        events = queue.Queue()
+        self.start_video_to_ascii_video_button.configure(state='disabled')
+        self.save_button.configure(state='disabled')
+        self.go_back_button.configure(text='取消导出', command=self._html_cancel.set)
+        self.frame_info.set('正在读取并转换为 ASCII 字符…')
+
+        def worker():
+            try:
+                count = export_html(source, destination, settings, cell_size,
+                                    lambda i, n: events.put(('progress', (i, n))),
+                                    self._html_cancel.is_set)
+                events.put(('done', count))
+            except ExportCancelled:
+                events.put(('cancelled', None))
+            except Exception as error:
+                events.put(('error', str(error)))
+
+        def poll():
+            latest = None
+            while True:
+                try:
+                    latest = events.get_nowait()
+                except queue.Empty:
+                    break
+            if latest:
+                kind, value = latest
+                if kind == 'progress':
+                    index, total = value
+                    self.frame_info.set(f'正在转换 ASCII 帧：{index} / {total or "未知"}')
+                else:
+                    self._html_running = False
+                    self.start_video_to_ascii_video_button.configure(state='normal')
+                    self.save_button.configure(state='normal')
+                    self.go_back_button.configure(text=translate_dict['Back'], command=self.go_back_main_window)
+                    if kind == 'done':
+                        self.frame_info.set(f'已导出 {value} 帧，可用浏览器打开：\n{destination}')
+                    elif kind == 'cancelled':
+                        self.frame_info.set('已取消导出。')
+                    else:
+                        self.frame_info.set('导出失败：' + value)
+                    return
+            self.after(100, poll)
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.after(100, poll)
 
     def video_to_img_window(self):
         self.go_back = False
@@ -588,8 +742,15 @@ class Root(Tk):
         if current_config:
             self.config_name.configure(text=current_config)
             self.config_contents.delete('1.0', END)
-            current_config_value = self.value_dict[
-                translate_dict_reverse[current_config]]
+            real_key = translate_dict_reverse.get(current_config, current_config)
+            if hasattr(self, 'choose_bool1') and hasattr(self, 'choose_bool2'):
+                if real_key == 'language':
+                    self.choose_bool1.configure(text='中文 (Chinese)', command=lambda: self.insert_bool('Chinese'))
+                    self.choose_bool2.configure(text='English (英文)', command=lambda: self.insert_bool('English'))
+                else:
+                    self.choose_bool1.configure(text='True', command=lambda: self.insert_bool('True'))
+                    self.choose_bool2.configure(text='False', command=lambda: self.insert_bool('False'))
+            current_config_value = self.value_dict.get(real_key, '')
             if type(current_config_value) == list:
                 current_config_value = current_config_value[1]
             current_config_value = get_value(current_config_value)
@@ -699,28 +860,9 @@ class Root(Tk):
                         current_settings[each] = current_value
         if changed:
             if 'language' in changed_values:
-                current_language = self.value_dict['language']
-                global translate_dict
-                try:
-                    with open(f'scripts/languages/{current_language}.json',
-                              encoding='utf-8') as f:
-                        translate_dict = json.load(f)
-                except:
-                    with open('scripts/languages/English.json',
-                              encoding='utf-8') as f:
-                        translate_dict = json.load(f)
-                global translate_dict_reverse
-                translate_dict_reverse = {
-                    j: i
-                    for i, j in translate_dict.items()
-                }
-                current_config = self.choose_config_options.index(ANCHOR)
-                self.choose_config_options.delete(0, END)
-                for k in self.all_config_options:
-                    self.choose_config_options.insert(END, translate_dict[k])
-                self.choose_config_options.selection_set(current_config)
-                self.choose_config_options.selection_anchor(current_config)
-                self.show_current_config_options(0)
+                raw_lang = self.value_dict.get('language', 'Chinese')
+                new_lang = normalize_language(raw_lang)
+                self.apply_language(new_lang)
             if 'background_image' in changed_values:
                 try:
                     bg_image = Image.open(background_image)
@@ -736,44 +878,83 @@ class Root(Tk):
             self.frame_info.set(
                 translate_dict['There\'s no changes in current settings'])
 
+    def toggle_language(self):
+        cur = normalize_language(self.value_dict.get('language', 'Chinese'))
+        new_lang = 'English' if cur == 'Chinese' else 'Chinese'
+        self.apply_language(new_lang)
+
+    def apply_language(self, new_lang):
+        new_lang = normalize_language(new_lang)
+        self.value_dict['language'] = new_lang
+        current_settings['language'] = new_lang
+        change('language', new_lang)
+        global translate_dict, translate_dict_reverse
+        try:
+            with open(f'scripts/languages/{new_lang}.json', encoding='utf-8') as f:
+                translate_dict = json.load(f)
+        except:
+            with open('scripts/languages/English.json', encoding='utf-8') as f:
+                translate_dict = json.load(f)
+        translate_dict_reverse = {j: i for i, j in translate_dict.items()}
+        self.set_style()
+        self.translate_all_config_options = [
+            translate_dict.get(i, i) for i in self.all_config_options
+        ]
+        if hasattr(self, 'save_button') and self.save_button.winfo_exists():
+            self.save_button.configure(text=translate_dict.get('Save Current Settings', 'Save'))
+        if hasattr(self, 'go_back_button') and self.go_back_button.winfo_exists():
+            self.go_back_button.configure(text=translate_dict.get('Back', 'Back'))
+        if hasattr(self, 'search_text') and self.search_text.winfo_exists():
+            self.search_text.configure(text=translate_dict.get('Search Settings', 'Search'))
+        if hasattr(self, 'up_button') and self.up_button.winfo_exists():
+            self.up_button.configure(text=translate_dict.get('Previous', 'Prev'))
+        if hasattr(self, 'down_button') and self.down_button.winfo_exists():
+            self.down_button.configure(text=translate_dict.get('Next', 'Next'))
+        if hasattr(self, 'choose_filename_button') and self.choose_filename_button.winfo_exists():
+            self.choose_filename_button.configure(text=translate_dict.get('Choose filename', 'Choose File'))
+        if hasattr(self, 'choose_directory_button') and self.choose_directory_button.winfo_exists():
+            self.choose_directory_button.configure(text=translate_dict.get('Choose directory', 'Choose Dir'))
+        if hasattr(self, 'change_sort_button') and self.change_sort_button.winfo_exists():
+            sort_txt = translate_dict['Sort in order of appearance'] if self.sort_mode == 1 else translate_dict['Sort in alphabetical order']
+            self.change_sort_button.configure(text=sort_txt)
+        if hasattr(self, 'choose_config_options') and self.choose_config_options.winfo_exists():
+            cur_idx = self.choose_config_options.curselection()
+            idx = cur_idx[0] if cur_idx else 0
+            self.choose_config_options.delete(0, END)
+            for k in self.all_config_options:
+                self.choose_config_options.insert(END, translate_dict.get(k, k))
+            self.choose_config_options.selection_set(idx)
+            self.choose_config_options.selection_anchor(idx)
+            self.show_current_config_options(0)
+        if hasattr(self, 'toggle_language_button') and self.toggle_language_button.winfo_exists():
+            lang_text = "🌐 切换为 English" if self.value_dict.get('language') == 'Chinese' else "🌐 切换为 中文"
+            self.toggle_language_button.configure(text=lang_text)
+        if hasattr(self, 'img_to_ascii_img_button') and self.img_to_ascii_img_button.winfo_ismapped():
+            self.reset_main_window()
+
     def quit_main_window(self):
-        self.img_to_ascii_img_button.place_forget()
-        self.video_to_ascii_video_button.place_forget()
-        self.video_to_ascii_img_button.place_forget()
-        self.change_settings_button.place_forget()
+        for w in self.main_widgets:
+            w.place_forget()
 
     def reset_main_window(self):
         self.set_style()
-        self.img_to_ascii_img_button = ttk.Button(
-            self,
-            text=translate_dict['Image to Ascii Images/Texts'],
-            compound=CENTER,
-            command=self.img_to_ascii_img_window)
+        self.html_button.place(x=520, y=340, width=450, height=60)
+        self.img_to_ascii_img_button.configure(text=translate_dict['Image to Ascii Images/Texts'])
         self.img_to_ascii_img_button.place(x=0, y=140, width=500, height=60)
-        self.video_to_ascii_video_button = ttk.Button(
-            self,
-            text=translate_dict['Videos to Ascii Videos'],
-            compound=CENTER,
-            command=self.video_to_ascii_video_window)
-        self.video_to_ascii_video_button.place(x=0,
-                                               y=240,
-                                               width=500,
-                                               height=60)
-        self.video_to_ascii_img_button = ttk.Button(
-            self,
-            text=translate_dict['Extract Frames From Videos'],
-            compound=CENTER,
-            command=self.video_to_img_window)
+        self.video_to_ascii_video_button.configure(text=translate_dict['Videos to Ascii Videos'])
+        self.video_to_ascii_video_button.place(x=0, y=240, width=500, height=60)
+        self.video_to_ascii_img_button.configure(text=translate_dict['Extract Frames From Videos'])
         self.video_to_ascii_img_button.place(x=0, y=340, width=500, height=60)
-        self.change_settings_button = ttk.Button(
-            self,
-            text=translate_dict['Change Settings'],
-            compound=CENTER,
-            command=self.change_settings_window,
-            style='New.TButton')
+        self.change_settings_button.configure(text=translate_dict['Change Settings'])
         self.change_settings_button.place(x=0, y=440, width=500, height=60)
+        lang_text = "🌐 切换为 English" if self.value_dict.get('language') == 'Chinese' else "🌐 切换为 中文"
+        self.toggle_language_button.configure(text=lang_text)
+        self.toggle_language_button.place(x=0, y=520, width=500, height=55)
 
     def go_back_main_window(self):
+        preview = getattr(self, '_ascii_preview', None)
+        if preview is not None and preview.winfo_exists():
+            preview.close()
         os.chdir(abs_path)
         self.go_back = True
         for i in self.current_widgets:
@@ -799,7 +980,7 @@ class Root(Tk):
         if show_percentage:
             whole_count = WIDTH * HEIGHT
             count = 0
-        im_resize = im.resize((WIDTH, HEIGHT), Image.ANTIALIAS)
+        im_resize = im.resize((WIDTH, HEIGHT), getattr(Image, 'LANCZOS', getattr(Image, 'ANTIALIAS', 1)))
         txt = ""
         if mode == 1:
             im_txt = Image.new(

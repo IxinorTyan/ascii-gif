@@ -10,10 +10,9 @@ import ffmpeg
 from ast import literal_eval
 from copy import deepcopy
 
-abs_path = os.path.dirname(os.path.abspath(__file__))
-current_path = os.getcwd()
-os.chdir(current_path)
-sys.path.append(abs_path)
-sys.path.append(current_path)
-with open('scripts/Ascii Converter.py', encoding='utf-8') as f:
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(project_root)
+sys.path.append(project_root)
+sys.path.append(os.path.join(project_root, 'scripts'))
+with open(os.path.join(project_root, 'scripts', 'Ascii Converter.py'), encoding='utf-8') as f:
     exec(f.read(), globals())

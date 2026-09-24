@@ -1,0 +1,24 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>背景绘制性能检查</title>
+<style>body{background:#15131d;color:#ddd;font:15px system-ui;padding:20px}canvas{max-width:90vw;max-height:60vh}pre{white-space:pre-wrap}</style>
+<h1>背景绘制性能检查</h1><p>合成高密度彩色画面，测量本机 Canvas 绘制调用耗时（不代表完整屏幕帧率）。</p><button id="run">运行检查</button><pre id="result">等待开始</pre><canvas id="canvas"></canvas>
+<script type="module">
+import {createBackgroundRenderer} from './background.mjs';
+import {DEFAULTS} from './ascii.mjs';
+document.getElementById('run').onclick=async()=>{
+  const button=document.getElementById('run'),result=document.getElementById('result');button.disabled=true;
+  const renderer=createBackgroundRenderer(document.getElementById('canvas'),DEFAULTS);
+  const cols=100,rows=56,chars='@#*+.: ';
+  const frames=Array.from({length:40},(_,i)=>({cols,rows,
+    text:Array.from({length:rows},(_,y)=>Array.from({length:cols},(_,x)=>chars[(x+y+i)%chars.length]).join('')).join('\n'),
+    colors:Uint32Array.from({length:cols*rows},(_,n)=>(n*19731+i*78341)&0xffffff)}));
+  const times=[];
+  for(let i=0;i<160;i++){
+    const now=performance.now();renderer.draw(frames[i%40],i%40);times.push(performance.now()-now);
+    if(i%8===0){result.textContent=`正在检查 ${i+1} / 160 帧… 最近绘制 ${times.at(-1).toFixed(2)} ms`;
+      await new Promise(resolve=>setTimeout(resolve,0));}
+  }
+  const sorted=times.slice(40).sort((a,b)=>a-b);
+  result.textContent=`完成：100 列 × 56 行，160 帧\n平均绘制调用：${(sorted.reduce((s,x)=>s+x,0)/sorted.length).toFixed(2)} ms\nP95 绘制调用：${sorted[Math.floor(sorted.length*.95)].toFixed(2)} ms\n预算参考：30 FPS 每帧 33.3 ms（还需留出浏览器合成等开销）`;
+  renderer.clear();button.disabled=false;
+};
+</script></html>
