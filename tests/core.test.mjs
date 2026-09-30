@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
-import {DEFAULTS, pixelsToAscii, samplePlan, frameAt, dimensions} from '../web/ascii.mjs';
-import {makeHtml, standalonePlayer} from '../web/export.mjs';
-import {renderAscii} from '../web/renderer.mjs';
-import {gifPlan, rasterizeAscii} from '../web/gif.mjs';
+import {DEFAULTS, pixelsToAscii, samplePlan, frameAt, dimensions} from '../ascii.mjs';
+import {makeHtml, standalonePlayer} from '../export.mjs';
+import {renderAscii} from '../renderer.mjs';
+import {gifPlan, rasterizeAscii} from '../gif.mjs';
 import {playerDom} from './player_dom.mjs';
 
 test('GIF groups sub-20ms frames and rounds timing without accumulating drift', () => {

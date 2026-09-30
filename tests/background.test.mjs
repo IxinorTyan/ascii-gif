@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createBackgroundRenderer, backgroundPlayer} from '../web/background.mjs';
-import {makeHtml} from '../web/export.mjs';
-import {DEFAULTS} from '../web/ascii.mjs';
+import {createBackgroundRenderer, backgroundPlayer} from '../background.mjs';
+import {makeHtml} from '../export.mjs';
+import {DEFAULTS} from '../ascii.mjs';
 import {playerDom} from './player_dom.mjs';
 
 test('Canvas reuses glyphs, caches frames, and reuses evicted raster surfaces within its budget', () => {

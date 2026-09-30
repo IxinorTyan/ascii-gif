@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Suzu ASCII Studio</title>
-  <meta name="studio-token" content="__STUDIO_TOKEN__">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <header class="topbar"><div><strong><i>✦</i> Suzu ASCII Studio</strong><span>把动态画面，变成流动的字符。</span></div><div class="header-actions"><span class="local-badge">● 本地工作室</span><button id="reset" class="quiet">更换素材</button></div></header>
+  <header class="topbar"><div><strong><i>✦</i> Suzu ASCII Studio</strong><span>把动态画面，变成流动的字符。</span></div><div class="header-actions"><span class="local-badge">● 纯静态网页版</span><button id="reset" class="quiet">更换素材</button></div></header>
   <main class="workspace">
     <section class="left panel">
-      <div id="drop" class="drop"><div class="drop-icon">↥</div><h2>从一段动态画面开始</h2><p>拖入视频或 GIF，探索字符的另一种表达。</p><input id="file" type="file" accept="video/*,.gif"><div class="import-actions"><button id="choose">选择本地文件</button><button id="demo" class="quiet">试试示例动画 ↗</button></div><small>MP4 / MOV / WebM / GIF · 文件仅在本机处理 · 最大 1 GB</small></div>
+      <div id="drop" class="drop"><div class="drop-icon">↥</div><h2>从一段动态画面开始</h2><p>拖入视频或 GIF，探索字符的另一种表达。</p><input id="file" type="file" accept="video/*,.gif"><div class="import-actions"><button id="choose">选择本地文件</button><button id="demo" class="quiet">试试示例动画 ↗</button></div><small>MP4 / WebM / MOV / GIF · 浏览器纯前端本地处理，无须上传服务器</small></div>
       <div id="mediaInfo" class="media-info hidden"></div>
       <div class="preview-head"><span>01 / 画面对照</span><span id="renderState">等待导入</span></div>
       <div class="preview-grid"><div class="preview-cell"><span class="cell-title">原始画面</span><div class="original-box"><img id="original" alt="原始帧" hidden><span id="originalEmpty" class="empty">画面从这里开始</span></div></div><div class="preview-cell"><span class="cell-title">ASCII 字符 <span id="gridInfo"></span></span><div id="asciiViewport" class="ascii-box"><div id="asciiSizer"><pre id="ascii"></pre></div><span id="asciiEmpty" class="empty">每一个字符，都是画面的像素</span></div></div></div>

@@ -1,3 +1,5 @@
+import { GIFEncoder, quantize, applyPalette } from './lib/gifenc.mjs';
+
 // GIF has centisecond timing. Group very fast frames to avoid browser delay clamping.
 export function gifPlan(items) {
   const grouped = [];
@@ -20,7 +22,7 @@ export function gifPlan(items) {
   });
 }
 
-export function rasterizeAscii(frame, params, maxEdge = 640) {
+export function rasterizeAsciiCanvas(frame, params, maxEdge = 640) {
   const canvas = document.createElement('canvas');
   let ctx = canvas.getContext('2d');
   const font = `${params.size}px "${params.font}", monospace`;
@@ -51,7 +53,41 @@ export function rasterizeAscii(frame, params, maxEdge = 640) {
       });
     }
   });
+  return canvas;
+}
+
+export function rasterizeAscii(frame, params, maxEdge = 640) {
+  const canvas = rasterizeAsciiCanvas(frame, params, maxEdge);
   return new Promise((resolve, reject) => canvas.toBlob(blob => {
     if (blob) resolve(blob); else reject(new Error('字符图片渲染失败。'));
   }, 'image/png'));
+}
+
+export async function exportGif(framesWithDuration, params, options = {}, onProgress, signal) {
+  const encoder = new GIFEncoder();
+  const maxEdge = Number(options.gifSize) || 480;
+  const total = framesWithDuration.length;
+
+  for (let i = 0; i < total; i++) {
+    if (signal?.aborted) {
+      throw new DOMException('已取消导出', 'AbortError');
+    }
+    if (onProgress) {
+      onProgress(i, total);
+    }
+    const item = framesWithDuration[i];
+    const canvas = rasterizeAsciiCanvas(item.frame, params, maxEdge);
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const palette = quantize(data, 256);
+    const indexStream = applyPalette(data, palette);
+    encoder.writeFrame(indexStream, canvas.width, canvas.height, {
+      palette,
+      delay: item.duration,
+      repeat: options.loop ? 0 : -1
+    });
+  }
+
+  encoder.finish();
+  return new Blob([encoder.bytes()], { type: 'image/gif' });
 }

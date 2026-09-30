@@ -1,9 +1,26 @@
 @echo off
-title ×Ö·û»­×ª»»Æ÷ Ascii Converter
 cd /d "%~dp0"
-python "scripts\start program.pyw"
-if %errorlevel% neq 0 (
-    echo.
-    echo [ÌáÊ¾] ³ÌĞòÍË³ö»ò³ö´í£¬´íÎóÂë: %errorlevel%
-    pause
+title Suzu ASCII Studio - çº¯é™æ€ç½‘é¡µç‰ˆ
+echo ======================================================
+echo    Suzu ASCII Studio (çº¯é™æ€ Web ç‰ˆ)
+echo    æ­£åœ¨å¯åŠ¨æœ¬åœ°é™æ€æœåŠ¡å¹¶æ‰“å¼€æµè§ˆå™¨...
+echo ======================================================
+
+where python >nul 2>nul
+if %errorlevel% equ 0 (
+    start "" "http://127.0.0.1:8765"
+    python -m http.server 8765
+    goto :end
 )
+
+where node >nul 2>nul
+if %errorlevel% equ 0 (
+    start "" "http://127.0.0.1:8765"
+    npx -y serve -l 8765 .
+    goto :end
+)
+
+echo [æç¤º] æœªæ£€æµ‹åˆ° Python æˆ– Node.jsï¼Œæ­£åœ¨å°è¯•ç›´æ¥ç”¨é»˜è®¤æµè§ˆå™¨æ‰“å¼€ index.html...
+start "" "%~dp0index.html"
+
+:end
