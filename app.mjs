@@ -89,12 +89,7 @@ async function renderPending() {
       canvas.height = image.height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
-      canvas.toBlob(blob => {
-        if (revision !== state.revision || !blob) return;
-        if (state.sourceUrl) URL.revokeObjectURL(state.sourceUrl);
-        state.sourceUrl = URL.createObjectURL(blob);
-        $('original').src = state.sourceUrl;
-      });
+      $('original').src = canvas.toDataURL('image/png');
     }
     if (revision !== state.revision) return;
     state.frame = convertFrame(state.image, params);
@@ -127,6 +122,7 @@ function clearMedia() {
   $('original').removeAttribute('src'); $('original').hidden = true;
   $('originalEmpty').hidden = false; $('asciiEmpty').hidden = false;
   $('ascii').textContent = ''; $('asciiSizer').removeAttribute('style'); $('gridInfo').textContent = '';
+  renderAscii.cache?.delete?.($('ascii'));
   $('renderState').textContent = '等待导入'; $('file').value = '';
   controls(); updatePlan();
 }

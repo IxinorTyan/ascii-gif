@@ -174,7 +174,14 @@ export async function decodeVideo(file) {
         }
       };
       video.addEventListener('seeked', onSeeked);
-      video.currentTime = Math.max(0, Math.min(durationSec, timeSec));
+      const targetTime = Math.max(0, Math.min(durationSec, timeSec));
+      if (Math.abs(video.currentTime - targetTime) < 0.001) {
+        resolved = true;
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+        return;
+      }
+      video.currentTime = targetTime;
       // Safety timeout in case seeked doesn't fire
       setTimeout(() => {
         if (!resolved) {
